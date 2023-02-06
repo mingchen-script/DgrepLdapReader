@@ -1,24 +1,22 @@
-# Read me 1/29/2023
+# Read me 
   # This script will convert AADDS's LDAP 1644 DGrep output into Excel pivot tables for workload analysis, to use this script:
   #    1. Run DGrep with 
         # source
-        # | sort by TIMESTAMP asc
-        # | project-rename LDAPServer=RoleInstance, TimeGenerated=PreciseTimeStamp, StartingNode=Data1, Filter=Data2, VisitedEntries=Data3, ReturnedEntries=Data4, Client=Data5, SearchScope=Data6, AttributeSelection=Data7, ServerControls=Data8, UsedIndexes=Data9, PagesReferenced=Data10, PagesReadFromDisk=Data11, PagesPreReadFromDisk=Data12, CleanPagesModified=Data13, DirtyPagesModified=Data14, SearchTimeMS=Data15, AttributesPreventingOptimization=Data16, User=Data17
-        #     | extend ClientIP=split(Client,":",0)
-        #     | extend ClientPort=split(Client,":",1)
-        # | project LDAPServer, TimeGenerated, ClientIP, ClientPort, StartingNode, Filter, SearchScope, AttributeSelection, ServerControls, VisitedEntries, ReturnedEntries, UsedIndexes, PagesReferenced, PagesReadFromDisk, PagesPreReadFromDisk, CleanPagesModified, DirtyPagesModified, SearchTimeMS, AttributesPreventingOptimization, User
+        # | sort by TIMESTAMP desc
+        # | project-rename LDAPServer=RoleInstance, TimeGenerated=PreciseTimeStamp, StartingNode=Data1, Filter=Data2, VisitedEntries=Data3, ReturnedEntries=Data4, Client=Data5, SearchScope=Data6, AttributeSelection=Data7, ServerControls=Data8, UsedIndexes=Data9, PagesReferenced=Data10, PagesReadFromDisk=Data11, PagesPreReadFromDisk=Data12,  CleanPagesModified=Data13, DirtyPagesModified=Data14, SearchTimeMS=Data15, AttributesPreventingOptimization=Data16, User=Data17
+        # | project LDAPServer, TimeGenerated, ClientIP=extract("[^:]+", 0, Client), ClientPort=extract("\\d+$", 0, Client), StartingNode, Filter, SearchScope, AttributeSelection, ServerControls, VisitedEntries, ReturnedEntries, UsedIndexes, PagesReferenced, PagesReadFromDisk, PagesPreReadFromDisk, CleanPagesModified, DirtyPagesModified, SearchTimeMS=toint(SearchTimeMS), AttributesPreventingOptimization, User
   #    2. Output to CSV
   #    3. Put CSV in same directory as this script.
-  #    4. Script will perform string replacement in TimeGenerated, ClientIP, ClientPort fields, then calls Excel to import resulting CSV, create pivot tables for common ldap search analysis scenarios. 
+  #    4. Script will perform string replacement in TimeGenerated, calls Excel to import resulting CSV, create pivot tables for common ldap search analysis scenarios. 
   # Note: Script requires 64bits Excel.
   #
-  # DgrepLdapReader.ps1 
+  # DgrepLdapReader.ps1 (2/6/23, fixed multi CSV import)
     #		Steps: 
-    #   	1. Put downloaded Dgrep Log.*.csv to same directory as DgrepLdapReader.ps1
+    #   	1. Put downloaded Dgrep Logs*.csv to same directory as DgrepLdapReader.ps1
     #   	2. Run script
 
   # Script info:    https://docs.microsoft.com/en-us/troubleshoot/windows-server/identity/event1644reader-analyze-ldap-query-performance
-    #   Latest:       https://github.com/mingchen-script/DgrepLdapReader.ps1
+    #   Latest:       https://github.com/mingchen-script/DgrepLdapReader
     # AD Schema:      https://docs.microsoft.com/en-us/windows/win32/adschema/active-directory-schema
     # AD Attributes:  https://docs.microsoft.com/en-us/windows/win32/adschema/attributes
 #------Script variables block, modify to fit your needs ---------------------------------------------------------------------
@@ -108,15 +106,11 @@ $ScriptPath = Split-Path ((Get-Variable MyInvocation -Scope 0).Value).MyCommand.
     (Get-ChildItem -Path $ScriptPath -Filter "Logs*.csv" | Select-Object -ExpandProperty FullName).foreach({
       $1644s=Import-Csv $_
         foreach ($1644 in $1644s) {
-          $1644.TimeGenerated=[DateTime]($1644.TimeGenerated)
-          $1644.ClientIP=$1644.ClientIP.replace('["','')
-          $1644.ClientIP=$1644.ClientIP.replace('"]','')
-          $1644.ClientPort=$1644.ClientPort.replace('["','')
-          $1644.ClientPort=$1644.ClientPort.replace('"]','')
+          $1644.TimeGenerated=[DateTime]($1644.TimeGenerated) #Convert time string 
         }
+      $1644s | Export-Csv $OutFile1 -NoTypeInformation -Append
     })
-    $1644s | Export-Csv $OutFile1 -NoTypeInformation -Append
-    #$null = Get-ChildItem -Path $ScriptPath -Filter "Logs*.csv" | Remove-Item
+    $null = Get-ChildItem -Path $ScriptPath -Filter "Logs*.csv" | Remove-Item
 #----Excel COM variables-------------------------------------------------------------------
   $fmtNumber  = "###,###,###,###,###"
   $fmtPercent = "#0.00%"
@@ -134,8 +128,9 @@ If (Test-Path $OutFile1) {
       $Sheet0.Application.ActiveWindow.SplitRow=1  
       $Sheet0.Application.ActiveWindow.FreezePanes = $true
       $null = $Sheet0.Columns.AutoFit() = $Sheet0.Range("A1").AutoFilter()
-        ("C","D","J","K","L").ForEach({$Sheet0.Columns.Item($_).columnwidth = 70})
-        ("E","F","H","M","N","O","P","Q","R").ForEach({$Sheet0.Columns.Item($_).numberformat = $fmtNumber})
+        ("C","D").ForEach({$Sheet0.Columns.Item($_).columnwidth = 15})
+        ("E","F","H").ForEach({$Sheet0.Columns.Item($_).columnwidth = 40})
+        ("J","K","M","N","O","P","Q","R").ForEach({$Sheet0.Columns.Item($_).numberformat = $fmtNumber})
         $Sheet0.Columns.Item("B").numberformat = "m/d/yyyy h:mm:s AM/PM"
       $Sheet0.Name = $OutTitle1
       $null = $Sheet0.ListObjects.Add(1, $Sheet0.Application.ActiveCell.CurrentRegion, $null ,0)
